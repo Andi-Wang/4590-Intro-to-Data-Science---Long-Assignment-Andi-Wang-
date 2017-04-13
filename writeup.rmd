@@ -1,0 +1,150 @@
+---
+  title: "DCF function in R"
+  author: "Andi Wang"
+  date: "April 12, 2017"
+  output: html_document
+---
+
+#Overview
+This function uses 30 parameters regarding the financial data of a company and 2 other parameters that are used as assumptions in calculating the DCF. 
+The last parameter determines the type of output the function returns.
+
+#Creating the function
+I stuck closely to the structure of the provided VBA function so I could replicate the functionality as precisely as possible. As such, the process of creating the function was mainly translating from VBA to R.
+
+#Rundown of the function
+At the beginning of the function, we have a few variable declarations:
+
+```{r, eval=FALSE}
+  GROWTH_RATE_REVENUE_VECTOR <- GROWTH_RATE_REVENUE_RNG
+  OPERATING_EXPENSE_VECTOR <- OPERATING_EXPENSE_RNG
+  GROWTH_RATE_CAPITAL_SPENDING_VECTOR <- GROWTH_RATE_CAPITAL_SPENDING_RNG
+  GROWTH_RATE_DEPRECIATION_VECTOR <- GROWTH_RATE_DEPRECIATION_RNG
+  WORKING_CAPITAL_VECTOR <- WORKING_CAPITAL_RNG'
+```
+
+This allows me to manipulate these 5 parameters without altering the originals, which doesn't end up being significant but it helps the VBA->R translation process because I don't have to remember that, for example, GROWTH_RATE_REVENUE_VECTOR later on in the code actually refers to GROWTH_RATE_REVENUE_RNG.
+
+```{r, eval=FALSE}
+  if(nrow(GROWTH_RATE_REVENUE_RNG) == 1)                                  {    GROWTH_RATE_REVENUE_VECTOR <- t(GROWTH_RATE_REVENUE_RNG)  }
+  if(nrow(GROWTH_RATE_REVENUE_VECTOR) != EXCESS_RETURN_PERIODS)           {    stop("Number of columns not equal to EXCESS_RETURN_PERIODS")  }
+```
+
+The next section with lines similar to this are to transpose the vectors if there is only one row (i.e. change it from row-wise to column-wise). If the input is invalid after that (number of rows doesn't match EXCESS_RETURN_PERIODS), the function stops and returns an error message.
+
+```{r, eval=FALSE}
+TEMP_MATRIX <- matrix(, nrow = 33, ncol = EXCESS_RETURN_PERIODS + 1)
+```
+
+This line sets up a matrix that holds most of the intermediary steps in calculating the DCF. The first parameter is blank because we don't have existing data to fill in, and the size of the matrix is 33 x (EXCESS_RETURN_PERIODS + 1).
+
+```{r, eval=FALSE}
+  COST_EQUITY_VAL <- ifelse(COST_EQUITY != 0, COST_EQUITY, RISK_FREE_RATE + BETA_STOCK * RISK_PREMIUM)
+  EQUITY_DEBT_RATIO <- ifelse(PUBLICLY_TRADED_FLAG == TRUE, LAST_TRADED_PRICE * NUMBER_SHARES_OUTSTANDING / (MARKET_VALUE_DEBT + LAST_TRADED_PRICE * NUMBER_SHARES_OUTSTANDING), 
+                              ifelse(DEBT_CAPITAL_RATIO = 0, 1 - BOOK_VALUE_DEBT / (BOOK_VALUE_DEBT + BOOK_VALUE_EQUITY), 1 - DEBT_CAPITAL_RATIO))
+  AFTER_TAX_COST_DEBT <- COST_DEBT * (1 - TAX_RATE_INCOME)
+  DEBT_CAPITAL_VAL <- 1 - EQUITY_DEBT_RATIO
+  COST_CAPITAL_VAL <- COST_EQUITY_VAL * EQUITY_DEBT_RATIO + AFTER_TAX_COST_DEBT * DEBT_CAPITAL_VAL
+```
+
+This section calculates a few intermediary values that are necessary, but don't need to go in the matrix because there would only be one value per row and because each of these values has a distinct meaning.
+
+After that, there's a large loop from 1 to EXCESS_RETURN_PERIODS, which is one less than the number of columns in the matrix (the last column is for values that are conceptually similar to subtotals - not sure what to call them). The loop calculates all of the values for the middle of the matrix, while the part following that calculates all the subtotals and final value. I won't go into detail because there would be a lot of DCF-related concepts to go through, but I'll go through the larger structures inside of the loop:
+
+```{r, eval=FALSE}
+    TEMP_MATRIX[1,j] <- j
+    
+    ifelse(j > 1, TEMP_MATRIX[2,j] <- TEMP_MATRIX[2,j-1], TEMP_MATRIX[2,j] <- CURRENT_REVENUE * (1 + GROWTH_RATE_REVENUE_VECTOR[j,1]))
+
+    TEMP_MATRIX[3,j] <- TEMP_MATRIX[2,j] * OPERATING_EXPENSE_VECTOR[j,1]
+    TEMP_MATRIX[4,j] <- TEMP_MATRIX[2,j] - TEMP_MATRIX[3,j]
+```
+
+First line is simply to number the periods. After that, the first three rows are filled in.
+
+```{r, eval=FALSE}
+    if(j > 1) {
+      TEMP_MATRIX[5,j] <- ifelse(TEMP_MATRIX[4,j] > 0, ifelse(TEMP_MATRIX[12,j-1] > TEMP_MATRIX[4,j], 0, (TEMP_MATRIX[4,j] - TEMP_MATRIX[12,j-1])) * TAX_RATE_INCOME, 0)
+      TEMP_MATRIX[7,j] <- TEMP_MATRIX[7,j-1] * (1 + GROWTH_RATE_DEPRECIATION_VECTOR[j,1])
+      TEMP_MATRIX[8,j] <- TEMP_MATRIX[8,j-1] * (1 + GROWTH_RATE_CAPITAL_SPENDING_VECTOR[j,1])
+      TEMP_MATRIX[9,j] <- (TEMP_MATRIX[2,j] - TEMP_MATRIX [2,j-1]) * WORKING_CAPITAL_VECTOR[j,1]
+      TEMP_MATRIX[12,j] <- ifelse(TEMP_MATRIX[12,j-1] > TEMP_MATRIX[4,j], TEMP_MATRIX[12,j-1] - TEMP_MATRIX[4,j], 0)
+    }
+    else {
+      TEMP_MATRIX[5,j] <- ifelse(TEMP_MATRIX[4,j] > 0, ifelse(NOL_CARRIED_FORWARD > TEMP_MATRIX[4,j], 0, (TEMP_MATRIX[4,j] - NOL_CARRIED_FORWARD) * TAX_RATE_INCOME), 0)
+      TEMP_MATRIX[7,j] <- CURRENT_DEPRECIATION * (1 + GROWTH_RATE_DEPRECIATION_VECTOR[j,1])
+      TEMP_MATRIX[8,j] <- CURRENT_CAPITAL_SPENDING * (1 + GROWTH_RATE_CAPITAL_SPENDING_VECTOR[j,1])
+      TEMP_MATRIX[9,j] <- (TEMP_MATRIX[2,j] - CURRENT_REVENUE) * WORKING_CAPITAL_VECTOR[j,1]
+      TEMP_MATRIX[12,j] <- ifelse(NOL_CARRIED_FORWARD > 0, ifelse(NOL_CARRIED_FORWARD < TEMP_MATRIX[2,j], 0, NOL_CARRIED_FORWARD - TEMP_MATRIX[2,j]), 0)
+    }
+```
+
+The if block fills in all the columns with index greater than 1. In other words, it fills in everything except the first column of the matrix (for rows 5, 7, 8, 9, and 12).
+The else block, then, fills in the first column of those rows because it's the only column remaining (though chronologically the else block happens before the others since j starts at 1).
+
+```{r, eval=FALSE}
+    TEMP_MATRIX[6,j] <- TEMP_MATRIX[4,j] - TEMP_MATRIX[5,j]
+    TEMP_MATRIX[10,j] <- TEMP_MATRIX[6,j] + TEMP_MATRIX[7,j] + TEMP_MATRIX[8,j] - TEMP_MATRIX[9,j]
+    TEMP_MATRIX[13,j] <- TEMP_MATRIX[5,j] / TEMP_MATRIX[4,j]
+```
+
+This part fills in rows 6, 10, and 13.
+
+```{r, eval=FALSE}
+if(j <= CAP_PERIODS) {
+      TEMP_MATRIX[14,j] <- BETA_STOCK
+      TEMP_MATRIX[17,j] <- DEBT_CAPITAL_VAL
+    }
+    else {
+      TEMP_MATRIX[14,j] <- ifelse(BETA_STABLE_PERIOD != 0, TEMP_MATRIX[14,CAP_PERIODS] - ((TEMP_MATRIX[14,CAP_PERIODS] - BETA_STABLE_PERIOD) / CAP_PERIODS) * (j - CAP_PERIODS), BETA_STOCK)
+      TEMP_MATRIX[17,j] <- ifelse(DEBT_RATIO_STABLE_PERIOD != 0, TEMP_MATRIX[17,CAP_PERIODS] - ((TEMP_MATRIX[17,CAP_PERIODS] - DEBT_CAPITAL_VAL) / CAP_PERIODS) * (j - CAP_PERIODS), DEBT_CAPITAL_VAL)
+    }
+```
+
+This if block fills in everything (rows 14 and 17) except the last column. The else block covers the last column.
+
+```{r, eval=FALSE}
+    TEMP_MATRIX[15,j] <- ifelse(COST_EQUITY == 0, RISK_FREE_RATE + TEMP_MATRIX[14,j] * RISK_PREMIUM, COST_EQUITY)
+    TEMP_MATRIX[16,j] <- COST_DEBT_STABLE_PERIOD * (1 - TAX_RATE_INCOME)
+    TEMP_MATRIX[18,j] <- TEMP_MATRIX[15,j] * (1 - TEMP_MATRIX[17,j]) + TEMP_MATRIX[16,j] * TEMP_MATRIX[17,j]
+    ifelse(j > 1, TEMP_MATRIX[19,j] <- TEMP_MATRIX[19,j-1] * (1 + TEMP_MATRIX[18,j]), TEMP_MATRIX[19,j] <- 1 + TEMP_MATRIX[18,j])
+    TEMP_MATRIX[11,j] <- TEMP_MATRIX[10,j] / TEMP_MATRIX[19,j]
+    ifelse(is.na(TEMP_MATRIX[28,1]), TEMP_MATRIX[28,1] <- TEMP_MATRIX[11,j], TEMP_MATRIX[28,1] <- TEMP_MATRIX[28,1] + TEMP_MATRIX[11,j])
+```
+
+The last part of the loop fills in rows 15, 16, 18, 19 (everything except first column), 11, and the first column of row 28.
+
+The next block of code can be segregated into two purposes. Looking at the first half:
+
+```{r, eval=FALSE}
+  TEMP_MATRIX[2,EXCESS_RETURN_PERIODS+1] <- TEMP_MATRIX[2,EXCESS_RETURN_PERIODS] * (1+ GROWTH_RATE_STABLE_PERIOD)
+```
+
+Note that the assignment is acting on column (EXCESS_RETURN_PERIODS + 1), which is the last column. Therefore, the first half of this big block of code is making those "subtotal" values I made reference to earleir. It calculates a final value for each of the rows ranging from 2-18 and puts it in the last column of the matrix in those rows.
+
+As for the second half of the code block:
+
+```{r, eval=FALSE}
+  TEMP_MATRIX[20,1] <- GROWTH_RATE_STABLE_PERIOD
+```
+
+Note that the assignment targets the first column, in a row that hasn't been used before. Strictly speaking, the second code block didn't have to be in the matrix since it only uses the first column of the matrix (i.e. it could have been stored in a vector instead since it effectively only has one dimension; I wanted to keep it similar to the VBA, though). The second half of the code block calculates the last few intermediary values, and finally...
+
+```{r, eval=FALSE}
+  INTRINSIC_VALUE_SHARE <- TEMP_MATRIX[33,1]
+```
+
+... it stores the result into a named variable (since the result has enough significance to warrant a name).
+
+```{r, eval=FALSE}
+  if(OUTPUT == 0) {
+    return(INTRINSIC_VALUE_SHARE)
+  }
+  else if(OUTPUT == 1) {
+    return(TEMP_MATRIX)
+  }
+```
+
+Finally, this last part looks at the parameter OUTPUT, which tells the function what to return as a result. If 0, it returns the intrinsic value per share; if 1, it returns the entire matrix. Here I deviated from the original VBA in that the VBA has a switch statement defining a bunch of other return values. Since I only really needed when OUTPUT == 0, I just kept that (and OUTPUT == 1 for debugging purposes).
+
+The last part is just the function call I used to test. And that's it!
