@@ -157,7 +157,7 @@ DCF_MULTI_STAGE_FCF_FUNC(123456, 7890,
                          1, 0.15,
                          TRUE, 0.08,
                          1.1, matrix(c(rep(0.06,6),rep(0.04,4)),nrow = 1),
-                         matrix(c(rep(0.8,10)), ncol = 1), matrix(c(rep(0.06,4),rep(0.04,)), nrow = 1),
+                         matrix(c(rep(0.8,10)), ncol = 1), matrix(c(rep(0.06,4),rep(0.04,6)), nrow = 1),
                          matrix(c(rep(0.06,5),rep(0.03,5)), nrow = 1), matrix(c(rep(0.05,10)), nrow = 1), 
                          10,5,
                          1   #important: OUTPUT parameter; change to 0 to return only the INTRINSIC_VALUE_SHARE
